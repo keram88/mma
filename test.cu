@@ -57,20 +57,6 @@ __global__ void WMMAF16TensorCore(const float *A, const float *B, float *C)
         }
     }
     wmma::store_matrix_sync(C + c_col + c_row * N_TOTAL, c_frag, N_TOTAL, wmma::mem_row_major);
-
-    // // D = AB + C
-    // c_col = b_row;
-    // c_row = a_row;
-    // if (c_row < M_TOTAL && c_col < N_TOTAL) {
-    //     wmma::load_matrix_sync(c_frag, C + c_col + c_row * N_TOTAL, N_TOTAL, wmma::mem_row_major);
-
-    //     for (int i = 0; i < c_frag.num_elements; i++) {
-    //         c_frag.x[i] = ab_frag.x[i] + c_frag.x[i];
-    //     }
-
-    //     // Store the output
-    //     wmma::store_matrix_sync(D + c_col + c_row * N_TOTAL, c_frag, N_TOTAL, wmma::mem_row_major);
-    // }
 }
 
 cudaError_t CalcWMMA(const float *A, const float *B, float *C)
@@ -140,13 +126,15 @@ void cpu_mma(const float* a, const float* b, float* c, size_t mt, size_t nt, siz
     }
 }
 
-double avg_err(float* a, float* b, size_t elems) {
+std::pair<double, double> avg_err(float* a, float* b, size_t elems) {
     double err = 0.0;
-    for (size_t i; i < elems; i++) {
-        double lerr = double(a[i]) - double(b[i]);
-        err += lerr < 0 ? -lerr : lerr;
+    double largest = 0.0;
+    for (size_t i = 0; i < elems; i++) {
+        double lerr = std::abs(double(a[i]) - double(b[i]));
+        largest = std::max(largest, lerr);
+        err += lerr;
     }
-    return err;
+    return {err/double(elems) , largest};
 }
 
 int main() {
@@ -168,7 +156,10 @@ int main() {
     matmul_on_gpu(A, B, C2, M_TOTAL, K_TOTAL, N_TOTAL);
     cpu_mma(A, B, C3, M_TOTAL, N_TOTAL, K_TOTAL);
 
-    double gpu_cpu_err = 0.0;
+    std::pair<double, double> gpu_cpu_err = avg_err(C2, C3, M_TOTAL * N_TOTAL);
+    std::pair<double, double> wmma_cpu_err = avg_err(C1, C3, M_TOTAL * N_TOTAL);
+    std::cout << "Old error vs CPU: " << gpu_cpu_err.first << std::endl;
+    std::cout << "Tensor error vs CPU: " << wmma_cpu_err.first << std::endl;
     cudaFree(C2);
     cudaFree(C1);
     cudaFree(B);
