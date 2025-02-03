@@ -1,3 +1,5 @@
+// nvcc -o test -arch sm_86 test.cu
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <iostream>
@@ -27,6 +29,7 @@ using namespace nvcuda::wmma;
 #define N_TOTAL (N * N_TILES)
 #define K_TOTAL (K * K_TILES)
 
+// --- Based on https://github.com/wzsh/wmma_tensorcore_sample/blob/master/matrix_wmma/matrix_wmma/main.cu ---
 __global__ void WMMAF16TensorCore(const float *A, const float *B, float *C)
 {
     int ix = (blockIdx.x * blockDim.x + threadIdx.x) / WARP_SIZE;
@@ -72,8 +75,9 @@ cudaError_t CalcWMMA(const float *A, const float *B, float *C)
     WMMAF16TensorCore<<<gridDim, blockDim>>>(A, B, C);
     return cudaDeviceSynchronize();
 }
+// --- End ---
 
-
+// --- Taken from https://github.com/mlecauchois/micrograd-cuda/blob/main/micrograd_cuda/operations.cu ---
 // Matrix multiplication
 // a is a_rows x a_cols, b is a_cols x b_cols
 __global__ void matmul_kernel(float *a, float *b, float *c, int a_rows, int a_cols, int b_cols) {
@@ -98,6 +102,8 @@ extern "C" void matmul_on_gpu(float *d_a, float *d_b, float *d_c, int a_rows, in
 
     cudaDeviceSynchronize();
 }
+// ---------------------------------------------------
+
 
 void fillMat(float* a, size_t rows, size_t cols, size_t seed) {
     std::mt19937 rng(seed);
@@ -114,6 +120,7 @@ void cudaCheck(cudaError_t status) {
     }
 }
 
+// --- CPU version ---
 void cpu_mma(const float* a, const float* b, float* c, size_t mt, size_t nt, size_t kt) {
     for (size_t i = 0; i < mt; i++) {
         for (size_t j = 0; j < nt; j++) {
@@ -125,6 +132,7 @@ void cpu_mma(const float* a, const float* b, float* c, size_t mt, size_t nt, siz
         }
     }
 }
+// --- End ---
 
 std::pair<double, double> avg_err(float* a, float* b, size_t elems) {
     double err = 0.0;
